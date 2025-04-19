@@ -4,6 +4,8 @@ type Status int
 
 const (
 	StatusNone Status = iota
+	StatusConnected
+	StatusConnectionLost
 	StatusSuccess
 	StatusUnauthorized
 )

@@ -42,6 +42,11 @@ func NewFIFONotifier(fifoPath string) *FIFONotifier {
 }
 
 func (f *FIFONotifier) watchFIFO() {
+	// we fake that we have a connection
+	f.notifications <- &Notification{
+		Status:  StatusConnected,
+		Message: idleMessage,
+	}
 	for {
 		file, err := os.OpenFile(f.path, os.O_RDONLY, os.ModeNamedPipe)
 		if err != nil {

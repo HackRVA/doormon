@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -14,58 +15,102 @@ type MQTTNotifier struct {
 	notifications chan *Notification
 }
 
-func NewMQTTNotifier(broker string, topic string) *MQTTNotifier {
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(broker)
-	randomID := rand.Intn(1000000)
-	clientID := fmt.Sprintf("door-monitor-client-%06d", randomID)
-	opts.SetClientID(clientID)
-	notifications := make(chan *Notification, 10)
+func NewMQTTNotifier(broker, topic string) *MQTTNotifier {
+	notifications := make(chan *Notification, 1)
 
-	notifier := &MQTTNotifier{
-		client:        mqtt.NewClient(opts),
-		notifications: notifications,
+	notifications <- &Notification{
+		Status:  StatusConnectionLost,
+		Message: unableToconnectMessage,
 	}
 
-	if token := notifier.client.Connect(); token.Wait() && token.Error() != nil {
-		log.Fatalf("MQTT connection failed: %v", token.Error())
-	}
+	opts := mqtt.NewClientOptions().
+		AddBroker(broker).
+		SetClientID(fmt.Sprintf("door-monitor-client-%06d", rand.Intn(1_000_000))).
+		SetAutoReconnect(true).
+		SetConnectRetry(true).
+		SetConnectRetryInterval(reconnectInterval).
+		SetMaxReconnectInterval(maxReconnectInterval)
 
-	notifier.client.Subscribe(topic, 0, func(client mqtt.Client, msg mqtt.Message) {
-		var payload struct {
-			Cmd     string `json:"cmd"`
-			Type    string `json:"type"`
-			IsKnown string `json:"isKnown"`
-			Access  string `json:"access"`
-			Door    string `json:"door"`
+	opts.SetOnConnectHandler(func(c mqtt.Client) {
+		log.Printf("connected. subscribing to %q", topic)
+		if tok := c.Subscribe(topic, 0, makeMessageHandler(notifications)); tok.Wait() && tok.Error() != nil {
+			log.Printf("subscribe error: %v", tok.Error())
 		}
-
-		err := json.Unmarshal(msg.Payload(), &payload)
-		if err != nil {
-			log.Printf("Failed to parse message: %v", err)
-			return
-		}
-
-		status := StatusUnauthorized
-		message := unauthorizedMessage
-		if payload.IsKnown == "true" {
-			status = StatusSuccess
-			message = authorizedMessage
-		}
-
 		notifications <- &Notification{
-			Status:  status,
-			Message: message,
+			Status:  StatusConnected,
+			Message: idleMessage,
 		}
 	})
 
-	return notifier
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		notifications <- &Notification{
+			Status:  StatusConnectionLost,
+			Message: connectionLostMessage,
+		}
+	})
+
+	client := mqtt.NewClient(opts)
+
+	go func() {
+		start := time.Now()
+		alertedMax := false
+
+		for {
+			tok := client.Connect()
+			tok.Wait()
+			if err := tok.Error(); err != nil {
+				elapsed := time.Since(start)
+
+				if !alertedMax && elapsed >= maxReconnectInterval {
+					notifications <- &Notification{
+						Status:  StatusConnectionLost,
+						Message: maxReconnectTimeReachedMessage,
+					}
+					alertedMax = true
+				} else if !alertedMax {
+					notifications <- &Notification{
+						Status:  StatusConnectionLost,
+						Message: unableToconnectMessage,
+					}
+				}
+				time.Sleep(reconnectInterval)
+				continue
+			}
+			return
+		}
+	}()
+
+	return &MQTTNotifier{
+		client:        client,
+		notifications: notifications,
+	}
+}
+
+func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
+	return func(_ mqtt.Client, msg mqtt.Message) {
+		var p struct {
+			IsKnown string `json:"isKnown"`
+		}
+		if err := json.Unmarshal(msg.Payload(), &p); err != nil {
+			log.Printf("parse error: %v", err)
+			return
+		}
+		note := &Notification{
+			Status:  StatusUnauthorized,
+			Message: unauthorizedMessage,
+		}
+		if p.IsKnown == "true" {
+			note.Status = StatusSuccess
+			note.Message = authorizedMessage
+		}
+		ch <- note
+	}
 }
 
 func (m *MQTTNotifier) Poll() *Notification {
 	select {
-	case note := <-m.notifications:
-		return note
+	case n := <-m.notifications:
+		return n
 	default:
 		return nil
 	}

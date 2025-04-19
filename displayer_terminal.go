@@ -2,23 +2,18 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"os"
-	"regexp"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
 const (
 	clearScreen = "\033[2J"
 	moveTopLeft = "\033[H"
-
-	bgBlack        = "\033[40m"
-	fgBrightRed    = "\033[91m"
-	fgBrightGreen  = "\033[92m"
-	fgBrightYellow = "\033[93m"
-	fgWhite        = "\033[97m"
-	reset          = "\033[0m"
+	reset       = "\033[0m"
 )
 
 type TerminalDisplayer struct{}
@@ -27,87 +22,44 @@ func NewTerminalDisplayer() *TerminalDisplayer {
 	return &TerminalDisplayer{}
 }
 
-func (td *TerminalDisplayer) ShowNotification(note *Notification) {
-	statusText := "UNAUTHORIZED"
-	textColor := fgBrightRed
-
-	if note.Status == StatusSuccess {
-		statusText = "SUCCESS"
-		textColor = fgBrightGreen
-	}
-
-	termWidth, _ := getTerminalSize()
-
+func (td *TerminalDisplayer) Display(message string, duration time.Duration, col color.Color) {
+	termWidth, _ := td.getTerminalSize()
 	fmt.Print(clearScreen + moveTopLeft)
 
-	largeStatus := strings.ToUpper(statusText)
-	border := strings.Repeat("=", len(largeStatus)+6)
+	ansiColor := td.convertColor(col)
 
-	lines := []string{
-		border,
-		fmt.Sprintf("  %s  ", largeStatus),
-		border,
-		"",
-	}
-
-	messageLines := strings.Split(note.Message, "\n")
-	lines = append(lines, messageLines...)
-
-	for _, line := range lines {
-		printColoredCenteredLine(line, textColor+bgBlack, termWidth)
+	for line := range strings.SplitSeq(message, "\n") {
+		pad := max((termWidth-len(line))/2, 0)
+		content := strings.Repeat(" ", pad) + line
+		if len(content) < termWidth {
+			content += strings.Repeat(" ", termWidth-len(content))
+		}
+		fmt.Printf("%s%s%s\n", ansiColor, content, reset)
 	}
 }
 
-func (td *TerminalDisplayer) ShowIdle() {
-	termWidth, _ := getTerminalSize()
+func (td *TerminalDisplayer) convertColor(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
 
-	fmt.Print(clearScreen + moveTopLeft)
-
-	textColor := fgBrightYellow
-
-	text := "WAITING FOR ACTIVITY"
-	border := strings.Repeat("-", len(text)+6)
-
-	lines := []string{
-		border,
-		fmt.Sprintf("  %s  ", text),
-		border,
-		"",
-		"No recent access detected.",
-	}
-
-	for _, line := range lines {
-		printColoredCenteredLine(line, textColor+bgBlack, termWidth)
-	}
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm\033[48;2;0;0;0m", r8, g8, b8)
 }
 
-func printColoredCenteredLine(line, color string, termWidth int) {
-	pad := max((termWidth-len(stripANSI(line)))/2, 0)
-	content := strings.Repeat(" ", pad) + line
-	if len(stripANSI(content)) < termWidth {
-		content += strings.Repeat(" ", termWidth-len(stripANSI(content)))
+func (td *TerminalDisplayer) getTerminalSize() (width, height int) {
+	var dims struct {
+		rows, cols, x, y uint16
 	}
-	fmt.Printf("%s%s%s\n", color, content, reset)
-}
-
-func getTerminalSize() (width, height int) {
-	var dimensions struct {
-		rows uint16
-		cols uint16
-		x    uint16
-		y    uint16
-	}
-	retCode, _, _ := syscall.Syscall6(
+	retCode, _, err := syscall.Syscall6(
 		syscall.SYS_IOCTL,
 		os.Stdout.Fd(),
 		uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(&dimensions)),
+		uintptr(unsafe.Pointer(&dims)),
 		0, 0, 0,
 	)
-	if retCode != 0 {
+	if err != 0 || retCode != 0 {
 		return 80, 24
 	}
-	return int(dimensions.cols), int(dimensions.rows)
+	return int(dims.cols), int(dims.rows)
 }
 
 func max(a, b int) int {
@@ -115,10 +67,4 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-func stripANSI(str string) string {
-	return ansiRegex.ReplaceAllString(str, "")
 }
