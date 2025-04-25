@@ -89,7 +89,8 @@ func NewMQTTNotifier(broker, topic string) *MQTTNotifier {
 func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
 	return func(_ mqtt.Client, msg mqtt.Message) {
 		var p struct {
-			IsKnown string `json:"isKnown"`
+			IsKnown  string `json:"isKnown"`
+			UserName string `json:"username"`
 		}
 		if err := json.Unmarshal(msg.Payload(), &p); err != nil {
 			log.Printf("parse error: %v", err)
@@ -101,7 +102,7 @@ func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
 		}
 		if p.IsKnown == "true" {
 			note.Status = StatusSuccess
-			note.Message = authorizedMessage
+			note.Message = fmt.Sprintf("Hey, %s,\nWelcome!", p.UserName)
 		}
 		ch <- note
 	}

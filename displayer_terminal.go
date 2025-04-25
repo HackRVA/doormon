@@ -27,15 +27,42 @@ func (td *TerminalDisplayer) Display(message string, duration time.Duration, col
 	fmt.Print(clearScreen + moveTopLeft)
 
 	ansiColor := td.convertColor(col)
+	resetColor := reset
+	defer fmt.Print(resetColor)
 
-	for line := range strings.SplitSeq(message, "\n") {
-		pad := max((termWidth-len(line))/2, 0)
-		content := strings.Repeat(" ", pad) + line
-		if len(content) < termWidth {
-			content += strings.Repeat(" ", termWidth-len(content))
+	/* add some empty lines */
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+
+	lines := strings.Split(message, "\n")
+	maxLen := 0
+	for _, line := range lines {
+		if len(line) > maxLen {
+			maxLen = len(line)
 		}
-		fmt.Printf("%s%s%s\n", ansiColor, content, reset)
 	}
+
+	boxWidth := maxLen + 2
+	leftPad := max((termWidth-(boxWidth+2))/2, 0)
+
+	padSpaces := func() string {
+		return strings.Repeat(" ", leftPad)
+	}
+
+	hyphen := strings.Repeat("-", boxWidth)
+
+	fmt.Printf("%s%s+%s+%s\n", padSpaces(), ansiColor, hyphen, resetColor)
+
+	for _, line := range lines {
+		padded := line + strings.Repeat(" ", maxLen-len(line))
+		fmt.Printf("%s%s| %s |%s\n", padSpaces(), ansiColor, padded, resetColor)
+	}
+
+	fmt.Printf("%s%s+%s+%s\n", padSpaces(), ansiColor, hyphen, resetColor)
 }
 
 func (td *TerminalDisplayer) convertColor(c color.Color) string {
