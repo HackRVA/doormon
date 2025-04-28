@@ -102,7 +102,7 @@ func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
 		}
 		if p.IsKnown == "true" {
 			note.Status = StatusSuccess
-			note.Message = fmt.Sprintf("Hey, %s,\nWelcome!", p.UserName)
+			note.Message = fmt.Sprintf("Hey, %s.\nWelcome to HackRVA!", p.UserName)
 		}
 		ch <- note
 	}

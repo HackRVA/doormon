@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	messageDuration                = 5 * time.Second
+	messageDuration                = 10 * time.Second
 	unauthorizedMessage            = "Unauthorized.\nCheck your subscription."
 	authorizedMessage              = "Welcome!"
 	idleMessage                    = "Waiting..."
@@ -21,11 +21,19 @@ const (
 	maxReconnectInterval = 30 * time.Minute
 )
 
+type displayMode uint
+
+const (
+	terminal displayMode = iota
+	terminalTextAnimator
+)
+
 func main() {
 	broker := flag.String("broker", "tcp://localhost:1883", "MQTT broker address")
 	topic := flag.String("topic", "frontdoor/send", "MQTT topic to subscribe to")
 	notifierMode := flag.String("mode", "mqtt", "(mqtt, fifo)")
 	fifoPath := flag.String("fifo", "/tmp/door_notifier", "Path to FIFO (for fifo mode) - how we should receive notifications")
+	displayerMode := flag.Int("display", 1, "choose the display mode")
 	flag.Parse()
 
 	var notifier Notifier
@@ -39,9 +47,13 @@ func main() {
 	}
 
 	var displayer Displayer
-	// leaving room for other display types
-	// maybe we add a graphical mode eventually...
-	displayer = NewTerminalDisplayer()
+
+	switch displayMode(*displayerMode) {
+	case terminal:
+		displayer = NewTerminalDisplayer()
+	case terminalTextAnimator:
+		displayer = NewAnimatedTerminalDisplayer()
+	}
 
 	connected := false
 	var lastShowTime time.Time

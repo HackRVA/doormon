@@ -27,6 +27,7 @@ func (td *TerminalDisplayer) Display(message string, duration time.Duration, col
 	fmt.Print(clearScreen + moveTopLeft)
 
 	ansiColor := td.convertColor(col)
+	borderColor := td.swapColor(col)
 	resetColor := reset
 	defer fmt.Print(resetColor)
 
@@ -48,28 +49,39 @@ func (td *TerminalDisplayer) Display(message string, duration time.Duration, col
 
 	boxWidth := maxLen + 2
 	leftPad := max((termWidth-(boxWidth+2))/2, 0)
-
-	padSpaces := func() string {
-		return strings.Repeat(" ", leftPad)
-	}
-
+	padSpaces := func() string { return strings.Repeat(" ", leftPad) }
 	hyphen := strings.Repeat("-", boxWidth)
 
-	fmt.Printf("%s%s+%s+%s\n", padSpaces(), ansiColor, hyphen, resetColor)
+	fmt.Printf("%s%s+%s+%s\n", padSpaces(), borderColor, hyphen, resetColor)
 
 	for _, line := range lines {
 		padded := line + strings.Repeat(" ", maxLen-len(line))
-		fmt.Printf("%s%s| %s |%s\n", padSpaces(), ansiColor, padded, resetColor)
+		// | border | text | border |
+		fmt.Printf("%s%s|%s%s %s %s%s|%s\n",
+			padSpaces(),
+			borderColor,
+			resetColor,
+			ansiColor,
+			padded,
+			resetColor,
+			borderColor,
+			resetColor,
+		)
 	}
 
-	fmt.Printf("%s%s+%s+%s\n", padSpaces(), ansiColor, hyphen, resetColor)
+	fmt.Printf("%s%s+%s+%s\n", padSpaces(), borderColor, hyphen, resetColor)
 }
 
 func (td *TerminalDisplayer) convertColor(c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
-
 	return fmt.Sprintf("\033[38;2;%d;%d;%dm\033[48;2;0;0;0m", r8, g8, b8)
+}
+
+func (td *TerminalDisplayer) swapColor(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
+	return fmt.Sprintf("\033[48;2;%d;%d;%dm\033[38;2;0;0;0m", r8, g8, b8)
 }
 
 func (td *TerminalDisplayer) getTerminalSize() (width, height int) {
