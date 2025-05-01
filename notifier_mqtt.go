@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -100,10 +101,14 @@ func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
 			Status:  StatusUnauthorized,
 			Message: unauthorizedMessage,
 		}
-		if p.IsKnown == "true" {
-			note.Status = StatusSuccess
-			note.Message = fmt.Sprintf("Hey, %s.\nWelcome to HackRVA!", p.UserName)
+		if p.IsKnown != "true" {
+			ch <- note
+			return
 		}
+
+		firstName := strings.Split(p.UserName, " ")[0]
+		note.Status = StatusSuccess
+		note.Message = fmt.Sprintf("Hey, %s.\nWelcome to HackRVA!", firstName)
 		ch <- note
 	}
 }
