@@ -90,6 +90,7 @@ func NewMQTTNotifier(broker, topic string) *MQTTNotifier {
 func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
 	return func(_ mqtt.Client, msg mqtt.Message) {
 		var p struct {
+			Type     string `json:"type"`
 			IsKnown  string `json:"isKnown"`
 			UserName string `json:"username"`
 		}
@@ -97,6 +98,11 @@ func makeMessageHandler(ch chan *Notification) mqtt.MessageHandler {
 			log.Printf("parse error: %v", err)
 			return
 		}
+
+		if p.Type != "access" {
+			return
+		}
+
 		note := &Notification{
 			Status:  StatusUnauthorized,
 			Message: unauthorizedMessage,
